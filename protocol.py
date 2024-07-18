@@ -39,17 +39,17 @@ def parse_args() -> argparse.Namespace:
     """Parse the command line arguments from the user"""
 
     parser = argparse.ArgumentParser(
-        description="This script will create a new volume."
+        description="This script will display IOPs over the last 1 hour for the volumes in the cluster."
     )
     parser.add_argument(
         "-c", "--cluster", required=True, help="API server IP:port details"
     )
-    parser.add_argument(
-        "-v", "--volume_name", required=True, help="Volume to create or clone from"
-    )
-    parser.add_argument(
-        "-vs", "--vserver_name", required=True, help="SVM to create the volume from"
-    )
+    # parser.add_argument(
+    #    "-v", "--volume_name", required=True, help="Volume to create or clone from"
+    #)
+    #parser.add_argument(
+    #    "-vs", "--vserver_name", required=True, help="SVM to create the volume from"
+    #)
     parser.add_argument("-u", "--api_user", default="admin", help="API Username")
     parser.add_argument("-p", "--api_pass", help="API Password")
     parsed_args = parser.parse_args()
