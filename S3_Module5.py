@@ -71,7 +71,7 @@ def make_bucket(vserver_name: str, aggr_name: str, bucket_name: str, user_name: 
                 "resources": [bucket_name, bucket_name+"/*"],
                 "actions": ["GetObject", "PutObject", "DeleteObject", "ListBucket"],
                 "effect": "allow",
-                "principals": [user_name]   #[{"sm_"+user_name}, {user_name}]
+                "principals": ["sm_s3_user", user_name]   
             }
         ]
     }
