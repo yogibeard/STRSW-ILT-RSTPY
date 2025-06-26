@@ -1,0 +1,137 @@
+#! /usr/local/bin/python
+
+"""
+ONTAP 9.13.1 REST API Python Client Library Scripts
+Author: Vish Hulikal
+This script performs the following:
+        - Create an S3 user
+        - Create an S3 bucket
+Minimum size of the bucket to be created: 102005473280B
+usage: python S3_Server.py [-h] -c CLUSTER -vs VSERVER_NAME -a AGGR_NAME -s S3_NAME -b BUCKET_NAME
+               -un S3_USER_NAME -n SIZE [-u API_USER] [-p API_PASS]
+These arguments required: -c/--cluster, -vs/--vserver_name, -a/--aggr_name, -s/--s3_name, -b/--bucket_name
+               -un/--s3_user_name, -n/--size, -u/--admin, -p/--password
+Example Parameters:
+
+-c cluster1 -vs nas_svm -a aggr1_cluster1_02_data -s S3_Server -b s3-bucket -un s3_user -n 102005473280 -u admin -p Netapp1!                
+
+"""
+import argparse
+from getpass import getpass
+import logging
+
+from netapp_ontap import config, HostConnection, NetAppRestError
+from netapp_ontap.resources import Aggregate, Svm, S3BucketSvm, S3User, S3Service
+import urllib3
+
+def make_s3_user(vserver_name: str, user_name: str) -> None:
+    """Creates a new S3 user configuration"""
+
+    vserver = Svm.find(name=vserver_name)
+    resource = S3User(vserver.uuid)
+    resource.name = user_name
+
+    try:
+        response = resource.post()
+        data = response.http_response.json()
+        ak = data['records'][0]['access_key']
+        sk = data['records'][0]['secret_key']
+        print(f"Response: {data}")
+        print(f"Access Key: {ak}")
+        print(f"Secret Key: {sk}")
+
+        print("S3 User %s created successfully" % resource.name)
+
+    except NetAppRestError as err:
+        print("Error: S3 User was not created" % err)
+    
+
+    
+    return
+
+def make_bucket(vserver_name: str, aggr_name: str, bucket_name: str, user_name: str, bucket_size: int) -> None:
+    """Make an S3 Bucket"""
+
+    vserver = Svm.find(name=vserver_name)
+    aggregate = Aggregate.find(name=aggr_name, fields="uuid,name")
+    resource = S3BucketSvm(vserver.uuid)
+    resource.name = bucket_name
+    resource.comment = "S3 Bucket"
+    resource.aggregates = [
+        {'name': aggr_name, 'uuid': aggregate.uuid}
+    ]
+    resource.constituents_per_aggregate = 4
+    resource.size = bucket_size
+    resource.is_http_enabled = True
+    resource.is_https_enabled = False
+    resource.policy = {
+        "statements": [
+            {
+                "sid": 1,
+                "resources": [bucket_name, bucket_name+"/*"],
+                "actions": ["GetObject", "PutObject", "DeleteObject", "ListBucket"],
+                "effect": "allow",
+                "principals": [user_name]   #[{"sm_"+user_name}, {user_name}]
+            }
+        ]
+    }
+
+    try:
+        resource.post()
+        print("S3 Bucket %s created successfully" % resource.name)
+    except NetAppRestError as err:
+        print("Error: S3 Bucket was not created: %s" % err)
+    return
+
+def parse_args() -> argparse.Namespace:
+    """Parse the command line arguments from the user"""
+
+    parser = argparse.ArgumentParser(
+        description="This script will create an SVM, an S3 User and an S3 bucket."
+    )
+    parser.add_argument(
+        "-c", "--cluster", required=True, help="API server IP:port details"
+    )
+    parser.add_argument(
+        "-vs", "--vserver_name", required=True, help="SVM name"
+    )
+    parser.add_argument(
+        "-a", "--aggr_name", required=True, help="Aggregate name"
+    )
+    parser.add_argument(
+        "-s", "--s3_name", required=True, help="S3 Server name"
+    )
+    parser.add_argument(
+        "-b", "--bucket_name", required=True, help="Bucket name"
+    )
+    parser.add_argument(
+        "-un", "--user_name", required=True, help="S3 User name"
+    )
+    parser.add_argument(
+        "-n", "--size", required=True, help="Size of the bucket in bytes"
+    )
+    parser.add_argument("-u", "--api_user", default="admin", help="API Username")
+    parser.add_argument("-p", "--api_pass", help="API Password")
+    parsed_args = parser.parse_args()
+
+    # collect the password without echo if not already provided
+    if not parsed_args.api_pass:
+        parsed_args.api_pass = getpass()
+
+    return parsed_args
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] [%(levelname)5s] [%(module)s:%(lineno)s] %(message)s",
+    )
+    args = parse_args()
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    config.CONNECTION = HostConnection(
+        args.cluster, username=args.api_user, password=args.api_pass, verify=False,
+    )
+
+#   Create an S3 user and an S3 bucket.
+    make_s3_user(args.vserver_name, args.user_name)
+    make_bucket(args.vserver_name, args.aggr_name, args.bucket_name, args.user_name, args.size)
